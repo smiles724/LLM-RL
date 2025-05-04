@@ -39,8 +39,6 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_dynamic_bsz=True \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=32768 \
     actor_rollout_ref.actor.use_kl_loss=False \
-    actor_rollout_ref.actor.kl_loss_coef=0.001 \
-    actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=1 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
@@ -53,11 +51,10 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.n_val=8 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
-    algorithm.kl_ctrl.kl_coef=0.001 \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
-    trainer.project_name='deepsft' \
-    trainer.experiment_name='deepsft-1.5b-8k' \
+    trainer.project_name='deephint' \
+    trainer.experiment_name='deephint-1.5b-8k' \
     +trainer.val_before_train=True \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \

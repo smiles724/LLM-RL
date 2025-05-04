@@ -4,14 +4,11 @@
     <list default="true" id="611290fc-e9dc-4540-b3b8-dd8625a9a17f" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scripts/deepscaler/train/deepscaler_1.5b_8k.sh" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/deepscaler/train/deepscaler_1.5b_8k.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verl/tests/verl/utils/dataset/test_rl_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/tests/verl/utils/dataset/test_rl_dataset.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/verl/verl/trainer/config/ppo_trainer.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/trainer/config/ppo_trainer.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/verl/verl/trainer/main_ppo.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/trainer/main_ppo.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/verl/verl/trainer/ppo/ray_trainer.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/trainer/ppo/ray_trainer.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/verl/verl/trainer/ppo/ray_trainer_stf.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/trainer/ppo/ray_trainer_sft.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/verl/verl/utils/dataset/rl_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/utils/dataset/rl_dataset.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/verl/verl/workers/actor/dp_actor.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/workers/actor/dp_actor.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/verl/verl/workers/fsdp_workers.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/workers/fsdp_workers.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/verl/verl/workers/rollout/vllm_rollout/vllm_rollout.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/workers/rollout/vllm_rollout/vllm_rollout.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

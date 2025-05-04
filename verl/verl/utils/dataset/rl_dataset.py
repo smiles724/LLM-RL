@@ -12,47 +12,47 @@ from transformers import PreTrainedTokenizer
 from verl.utils.model import compute_position_id_with_mask
 
 
-def make_collate_fn(use_hint: bool = False):
+def collate_fn(batch):
     """
-    Returns a collate_fn that:
-      - if use_hint=True, expects each item to be (plain_dict, hint_dict)
-        and returns (batched_plain, batched_hint)
-      - if use_hint=False, expects each item to be plain_dict
-        and returns batched_plain only
+    A collate_fn that handles either:
+      - batch: List[dict]                 → returns dict
+      - batch: List[ (dict, dict) ]       → returns (dict, dict)
     """
 
-    def collate_fn(batch):
-        # if hints are enabled, unzip tuples
-        if use_hint:
-            plains, hints = zip(*batch)
-            return _batch_dicts(plains), _batch_dicts(hints)
-        # otherwise batch a single dict
-        else:
-            return _batch_dicts(batch)
-
-    return collate_fn
+    # If dataset returns tuples, unzip them
+    if isinstance(batch[0], (list, tuple)) and len(batch[0]) == 2:
+        plains, hints = zip(*batch)
+        return _batch_dicts(plains), _batch_dicts(hints)
+    else:
+        # Single‐dict case
+        return _batch_dicts(batch)
 
 
-def _batch_dicts(dicts: list[dict]) -> dict:
+def _batch_dicts(data_list: list[dict]) -> dict:
     tensors = {}
     non_tensors = {}
 
-    for d in dicts:
-        for key, val in d.items():
+    for data in data_list:
+        for key, val in data.items():
             if isinstance(val, torch.Tensor):
-                tensors.setdefault(key, []).append(val)
+                if key not in tensors:
+                    tensors[key] = []
+                tensors[key].append(val)
             else:
-                non_tensors.setdefault(key, []).append(val)
+                if key not in non_tensors:
+                    non_tensors[key] = []
+                non_tensors[key].append(val)
 
-    for key, lst in tensors.items():
-        tensors[key] = torch.stack(lst, dim=0)
-    for key, lst in non_tensors.items():
-        non_tensors[key] = np.array(lst, dtype=object)
+    for key, val in tensors.items():
+        tensors[key] = torch.stack(val, dim=0)
 
-    out = {}
-    out.update(tensors)
-    out.update(non_tensors)
-    return out
+    for key, val in non_tensors.items():
+        non_tensors[key] = np.array(val, dtype=object)
+
+    output = {}
+    output.update(tensors)
+    output.update(non_tensors)
+    return output
 
 
 class RLHFDataset(Dataset):
@@ -61,13 +61,14 @@ class RLHFDataset(Dataset):
     """
 
     def __init__(self, parquet_files: Union[str, List[str]], tokenizer: PreTrainedTokenizer, prompt_key='prompt', prompt_with_hint_key='prompt_with_hint', max_prompt_length=1024,
-                 filter_prompts=True, cache_dir='~/.cache/verl/rlhf', chat_template_func=None, return_raw_chat=False, truncation='error'):
+                 filter_prompts=True, cache_dir='~/.cache/verl/rlhf', chat_template_func=None, return_raw_chat=False, truncation='error', mode='train'):
         if not isinstance(parquet_files, (List, ListConfig)):
             parquet_files = [parquet_files]
 
         self.parquet_files = parquet_files
         self.cache_dir = os.path.expanduser(cache_dir)
         self.tokenizer = tokenizer
+        self.mode = mode
 
         self.prompt_key = prompt_key
         self.prompt_with_hint_key = prompt_with_hint_key
@@ -139,14 +140,16 @@ class RLHFDataset(Dataset):
         row_dict["index"] = index
 
         # todo: build the hint chat
-        chat_with_hint = row_dict.pop(self.prompt_with_hint_key)
-        prompt_with_hint_with_chat_template = self.tokenizer.apply_chat_template(chat_with_hint, add_generation_prompt=True, tokenize=False)
-        input_ids, attention_mask = verl_F.tokenize_and_postprocess_data(prompt=prompt_with_hint_with_chat_template, tokenizer=self.tokenizer, max_length=self.max_prompt_length,
-                                                                         pad_token_id=self.tokenizer.pad_token_id, left_pad=True, truncation=self.truncation)
-        position_ids = compute_position_id_with_mask(attention_mask)
-        row_dict_with_hint = copy.deepcopy(row_dict)
-        row_dict_with_hint['input_ids'] = input_ids[0]
-        row_dict_with_hint['attention_mask'] = attention_mask[0]
-        row_dict_with_hint['position_ids'] = position_ids[0]
+        if self.mode == 'train':
+            chat_with_hint = row_dict.pop(self.prompt_with_hint_key)
+            prompt_with_hint_with_chat_template = self.tokenizer.apply_chat_template(chat_with_hint, add_generation_prompt=True, tokenize=False)
+            input_ids, attention_mask = verl_F.tokenize_and_postprocess_data(prompt=prompt_with_hint_with_chat_template, tokenizer=self.tokenizer, max_length=self.max_prompt_length,
+                                                                             pad_token_id=self.tokenizer.pad_token_id, left_pad=True, truncation=self.truncation)
+            position_ids = compute_position_id_with_mask(attention_mask)
+            row_dict_with_hint = copy.deepcopy(row_dict)
+            row_dict_with_hint['input_ids'] = input_ids[0]
+            row_dict_with_hint['attention_mask'] = attention_mask[0]
+            row_dict_with_hint['position_ids'] = position_ids[0]
 
-        return row_dict, row_dict_with_hint
+            return row_dict, row_dict_with_hint
+        return row_dict

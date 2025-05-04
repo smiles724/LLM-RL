@@ -171,8 +171,7 @@ class DataParallelPPOActor(BasePPOActor):
         temperature = data.meta_info['temperature']  # temperature must be in the data.meta_info to avoid slient error
 
         select_keys = ['responses', 'input_ids', 'attention_mask', 'position_ids', 'old_log_probs', 'advantages']
-        if self.config.use_kl_loss:
-            select_keys.append('ref_log_prob')
+        if self.config.use_kl_loss: select_keys.append('ref_log_prob')
         batch = data.select(batch_keys=select_keys).batch
 
         # Split to make minibatch iterator for updating the actor
@@ -222,7 +221,6 @@ class DataParallelPPOActor(BasePPOActor):
                         # compute kl loss
                         kld = core_algos.kl_penalty(logprob=log_prob, ref_logprob=ref_log_prob, kl_penalty=self.config.kl_loss_type)
                         kl_loss = masked_mean(kld, response_mask)
-
                         policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
                         metrics['actor/kl_loss'] = kl_loss.detach().item()  # record for each step
                         metrics['actor/kl_coef'] = self.config.kl_loss_coef
