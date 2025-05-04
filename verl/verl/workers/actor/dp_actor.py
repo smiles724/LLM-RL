@@ -162,7 +162,7 @@ class DataParallelPPOActor(BasePPOActor):
 
         return log_probs
 
-    def update_policy(self, data: DataProto, data_with_hint: DataProto = None):
+    def update_policy(self, data: DataProto, ):
         # make sure we are in training mode
         self.actor_module.train()
 
@@ -237,35 +237,9 @@ class DataParallelPPOActor(BasePPOActor):
                 grad_norm = self._optimizer_step()
                 data = {'actor/grad_norm': grad_norm.detach().item()}
                 append_to_dict(metrics, data)
-
-        if data_with_hint:
-            # switch to training mode
-            self.actor_module.train()
-
-            # pull out hint fields
-            hint_batch = data_with_hint.select(batch_keys=['input_ids', 'attention_mask', 'position_ids', 'responses']).batch
-
-            # you can split into micro-batches if needed
-            for hint_mb in hint_batch.split(self.config.sft_micro_batch_size):  # todo: config
-                # forward with labels = ground-truth responses
-                outputs = self.actor_module(input_ids=hint_mb['input_ids'], attention_mask=hint_mb['attention_mask'], position_ids=hint_mb['position_ids'],
-                                            labels=hint_mb['responses'],  # causal LM cross-entropy
-                                            use_cache=False)
-                sft_loss = outputs.loss
-
-                # scale by a coefficient and by grad-accum if you’re accumulating
-                (self.config.sft_loss_coef * sft_loss / self.gradient_accumulation).backward()
-                metrics.setdefault('actor/sft_loss', 0.0)
-                metrics['actor/sft_loss'] += sft_loss.detach().item()
-
-            # step optimizer once more to apply SFT gradients
-            grad_norm = self._optimizer_step()
-            metrics['actor/sft_grad_norm'] = grad_norm.detach().item()
-
-        self.actor_optimizer.zero_grad()
         return metrics
 
-    def compute_sft(self, data: DataProto, data_with_hint: DataProto = None):
+    def compute_sft(self, data: DataProto, ):
         # training mode
         self.actor_module.train()
 
@@ -309,29 +283,4 @@ class DataParallelPPOActor(BasePPOActor):
                 data = {'actor/grad_norm': grad_norm.detach().item()}
                 append_to_dict(metrics, data)
 
-        if data_with_hint:   # todo integrate into one SFT process
-            # switch to training mode
-            self.actor_module.train()
-
-            # pull out hint fields
-            hint_batch = data_with_hint.select(batch_keys=['input_ids', 'attention_mask', 'position_ids', 'responses']).batch
-
-            # you can split into micro-batches if needed
-            for hint_mb in hint_batch.split(self.config.sft_micro_batch_size):  # todo: config
-                # forward with labels = ground-truth responses
-                outputs = self.actor_module(input_ids=hint_mb['input_ids'], attention_mask=hint_mb['attention_mask'], position_ids=hint_mb['position_ids'],
-                                            labels=hint_mb['responses'],  # causal LM cross-entropy
-                                            use_cache=False)
-                sft_loss = outputs.loss
-
-                # scale by a coefficient and by grad-accum if you’re accumulating
-                (self.config.sft_loss_coef * sft_loss / self.gradient_accumulation).backward()
-                metrics.setdefault('actor/sft_loss', 0.0)
-                metrics['actor/sft_loss'] += sft_loss.detach().item()
-
-            # step optimizer once more to apply SFT gradients
-            grad_norm = self._optimizer_step()
-            metrics['actor/sft_grad_norm'] = grad_norm.detach().item()
-
-        self.actor_optimizer.zero_grad()
         return metrics

@@ -1,16 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="611290fc-e9dc-4540-b3b8-dd8625a9a17f" name="Changes" comment="" />
+    <list default="true" id="611290fc-e9dc-4540-b3b8-dd8625a9a17f" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scripts/deepscaler/train/deepscaler_1.5b_8k.sh" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/deepscaler/train/deepscaler_1.5b_8k.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verl/verl/trainer/config/ppo_trainer.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/trainer/config/ppo_trainer.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verl/verl/trainer/main_ppo.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/trainer/main_ppo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verl/verl/trainer/ppo/ray_trainer.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/trainer/ppo/ray_trainer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verl/verl/trainer/ppo/ray_trainer_stf.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/trainer/ppo/ray_trainer_sft.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verl/verl/utils/dataset/rl_dataset.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/utils/dataset/rl_dataset.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verl/verl/workers/actor/dp_actor.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/workers/actor/dp_actor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verl/verl/workers/fsdp_workers.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/workers/fsdp_workers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/verl/verl/workers/rollout/vllm_rollout/vllm_rollout.py" beforeDir="false" afterPath="$PROJECT_DIR$/verl/verl/workers/rollout/vllm_rollout/vllm_rollout.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
   </component>
   <component name="ProjectId" id="2vYH5DL15qy9EcAj9V3MYT0ypj6" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
@@ -19,7 +34,7 @@
   &quot;keyToString&quot;: {
     &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/zh397/Desktop/rllm/verl/verl/trainer/ppo&quot;
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/zh397/Desktop/My Research/(---) FF-FM/ForceFM&quot;
   }
 }</component>
   <component name="RecentsManager">
@@ -40,5 +55,16 @@
       <updated>1744314901803</updated>
     </task>
     <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>

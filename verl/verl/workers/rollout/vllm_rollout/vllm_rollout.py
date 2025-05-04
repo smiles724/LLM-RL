@@ -196,13 +196,13 @@ class vLLMRollout(BaseRollout):
         return batch, non_tensor_batch, is_validation
 
     @torch.no_grad()   # no gradient!
-    def generate_sequences(self, prompts: DataProto, hint: bool = False, **kwargs) -> DataProto:
+    def generate_sequences(self, prompts: DataProto, **kwargs) -> DataProto:
         """Generate sequences using vLLM engine with retry logic for failures.
 
         Args:
             prompts (DataProto): Input prompts containing batch data with input_ids, attention_mask,
                 position_ids and meta_info.
-            max_retries (int, optional): Maximum number of retries on failure. Defaults to 1e9.
+            hint (bool, optional):
             **kwargs: Additional sampling parameters to override defaults.
 
         Returns:
@@ -228,19 +228,8 @@ class vLLMRollout(BaseRollout):
         batch = DataProto(batch=batch, non_tensor_batch=non_tensor_batch, meta_info=prompts.meta_info)
 
         # response with hint
-        batch_with_hint = None
-        if hint:
-            idx = prompts.batch['input_ids_hint']
-            attention_mask = prompts.batch['attention_mask_hint']
-            position_ids = prompts.batch['position_ids_hint']
-            batch_with_hint, non_tensor_batch_with_hint, _ = self.generate(prompts, idx, attention_mask, position_ids, **kwargs)
-            batch_with_hint = DataProto(batch=batch, non_tensor_batch=non_tensor_batch, meta_info=prompts.meta_info)
-
         if self.reward_fn is not None and not is_validation:
             reward_tensor = self.reward_fn(batch)
             batch.batch['token_level_scores'] = reward_tensor
-            if hint:
-                reward_tensor_with_hint = self.reward_fn(batch_with_hint)
-                batch_with_hint.batch['token_level_scores'] = reward_tensor_with_hint
 
-        return batch, batch_with_hint
+        return batch

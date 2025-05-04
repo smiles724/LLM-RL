@@ -326,9 +326,9 @@ class ActorRolloutRefWorker(Worker):
         torch.cuda.empty_cache()
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
-    def update_actor(self, data: DataProto, data_with_hint: DataProto = None, sft: bool = False):
+    def update_actor(self, data: DataProto, hint_data: DataProto = None):
         data = data.to('cuda')
-        if data_with_hint: data_with_hint = data_with_hint.to('cuda')
+        if hint_data: hint_data = hint_data.to('cuda')
 
         assert self._is_actor
         if self._is_offload_param:
@@ -337,18 +337,18 @@ class ActorRolloutRefWorker(Worker):
             load_fsdp_optimizer(optimizer=self.actor_optimizer, device_id=torch.cuda.current_device())
 
         data.batch = data.batch.cuda()
-        if data_with_hint: data_with_hint.batch = data_with_hint.batch.cuda()
+        if hint_data: hint_data.batch = hint_data.batch.cuda()
         log_gpu_memory_usage('Before update policy', logger=logger)
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data=data)
-            if data_with_hint: self.ulysses_sharding_manager.preprocess_data(data=data_with_hint)
+            if hint_data: self.ulysses_sharding_manager.preprocess_data(data=hint_data)
 
             # perform training
             with Timer(name='update_policy', logger=None) as timer:
-                if sft:
-                    metrics = self.actor.compute_sft(data=data, data_with_hint=data_with_hint)
-                else:
-                    metrics = self.actor.update_policy(data=data, data_with_hint=data_with_hint)
+                metrics = self.actor.update_policy(data=data)
+                if hint_data is not None:
+                    _ = self.actor.update_policy(data=hint_data)
+
             delta_time = timer.last
             global_num_tokens = data.meta_info['global_token_num']
             estimated_flops, promised_flops = self.flops_counter.estimate_flops(global_num_tokens, delta_time)
@@ -372,7 +372,7 @@ class ActorRolloutRefWorker(Worker):
         return output
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
-    def generate_sequences(self, prompts: DataProto, hint: bool = False):
+    def generate_sequences(self, prompts: DataProto, ):
         prompts = prompts.to('cuda')
         assert self._is_rollout
         if self._is_offload_param:
@@ -384,24 +384,17 @@ class ActorRolloutRefWorker(Worker):
         with self.rollout_sharding_manager:
             log_gpu_memory_usage('After entering rollout sharding manager', logger=logger)
             prompts = self.rollout_sharding_manager.preprocess_data(prompts)
-            output, output_with_hint = self.rollout.generate_sequences(prompts=prompts, hint=hint)
+            output = self.rollout.generate_sequences(prompts=prompts)
             log_gpu_memory_usage('After rollout generation', logger=logger)
             output = self.rollout_sharding_manager.postprocess_data(output)
-            if output_with_hint is not None:
-                output_with_hint = self.rollout_sharding_manager.postprocess_data(output_with_hint)
 
         output = output.to('cpu')
-        if output_with_hint is not None:
-            output_with_hint = output_with_hint.to('cpu')
-
         if self._is_offload_param:
             # NOTE(sgm): the grad is already in CPU, only offload param here
             offload_fsdp_param_and_grad(module=self.actor_module_fsdp, offload_grad=self._is_offload_grad)
         # clear kv cache
         torch.cuda.empty_cache()
         log_gpu_memory_usage('After recompute log prob', logger=logger)
-        if hint:
-            return output, output_with_hint
         return output
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)

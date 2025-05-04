@@ -199,7 +199,7 @@ class RayPPOTrainer(object):
         self.config = config
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
-        self.hint = getattr(self.config.trainer, 'hint', False)
+        self.hint = getattr(self.config.trainer, 'hint', True)
 
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
         assert self.hybrid_engine, 'Currently, only support hybrid engine'
@@ -218,7 +218,7 @@ class RayPPOTrainer(object):
     def _create_dataloader(self):
         from torch.utils.data import DataLoader
         # TODO: we have to make sure the batch size is divisible by the dp size
-        from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
+        from verl.utils.dataset.rl_dataset import RLHFDataset, make_collate_fn
         self.train_dataset = RLHFDataset(parquet_files=self.config.data.train_files, tokenizer=self.tokenizer, prompt_key=self.config.data.prompt_key,
                                          max_prompt_length=self.config.data.max_prompt_length, filter_prompts=True, return_raw_chat=self.config.data.get('return_raw_chat', False),
                                          truncation='error')
@@ -226,14 +226,13 @@ class RayPPOTrainer(object):
         if self.config.trainer.rejection_sample:
             train_batch_size *= self.config.trainer.rejection_sample_multiplier
             train_batch_size = int(train_batch_size)
-        self.train_dataloader = DataLoader(dataset=self.train_dataset, batch_size=train_batch_size, shuffle=True, drop_last=True, collate_fn=collate_fn)
+        self.train_dataloader = DataLoader(dataset=self.train_dataset, batch_size=train_batch_size, shuffle=True, drop_last=True, collate_fn=make_collate_fn(use_hint=True))
 
         self.val_dataset = RLHFDataset(parquet_files=self.config.data.val_files, tokenizer=self.tokenizer, prompt_key=self.config.data.prompt_key,
                                        max_prompt_length=self.config.data.max_prompt_length, filter_prompts=True, return_raw_chat=self.config.data.get('return_raw_chat', False),
                                        truncation='error')
-        self.val_dataloader = DataLoader(dataset=self.val_dataset, batch_size=len(self.val_dataset), shuffle=True, drop_last=True, collate_fn=collate_fn)
-        assert len(self.train_dataloader) >= 1
-        assert len(self.val_dataloader) >= 1
+        self.val_dataloader = DataLoader(dataset=self.val_dataset, batch_size=len(self.val_dataset), shuffle=True, drop_last=True, collate_fn=make_collate_fn(use_hint=False))
+        assert len(self.train_dataloader) >= 1 and len(self.val_dataloader) >= 1
         print(f'Size of train dataloader: {len(self.train_dataloader)}')
         print(f'Size of val dataloader: {len(self.val_dataloader)}')
 
@@ -278,8 +277,7 @@ class RayPPOTrainer(object):
 
             test_batch = test_batch.union(test_output_gen_batch)
 
-            # evaluate using reward_function
-            # for certain reward function (e.g. sandbox), the generation can overlap with reward
+            # evaluate using reward_function for certain reward function (e.g. sandbox), the generation can overlap with reward
             reward_tensor = self.val_reward_fn(test_batch)
 
             reward_tensor_lst.append(reward_tensor)
@@ -327,7 +325,6 @@ class RayPPOTrainer(object):
 
         # create a reward model if reward_fn is None
         if self.use_rm:
-            # we create a RM here
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.RewardModel)
             rm_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RewardModel], config=self.config.reward_model)
             self.resource_pool_to_cls[resource_pool]['rm'] = rm_cls
@@ -343,13 +340,12 @@ class RayPPOTrainer(object):
             wg_dict = self.ray_worker_group_cls(resource_pool=resource_pool, ray_cls_with_init=worker_dict_cls)
             spawn_wg = wg_dict.spawn(prefix_set=class_dict.keys())
             all_wg.update(spawn_wg)
-            # keep the referece of WorkerDict to support ray >= 2.31. Ref: https://github.com/ray-project/ray/pull/45699
+            # keep the reference of WorkerDict to support ray >= 2.31. Ref: https://github.com/ray-project/ray/pull/45699
             self.wg_dicts.append(wg_dict)
 
         if self.use_reference_policy:
             self.ref_policy_wg = all_wg['ref']
             self.ref_policy_wg.init_model()
-
         if self.use_rm:
             self.rm_wg = all_wg['rm']
             self.rm_wg.init_model()
@@ -399,7 +395,7 @@ class RayPPOTrainer(object):
         self.global_steps += 1
         for _ in range(self.config.trainer.total_epochs):
 
-            for batch_dict in self.train_dataloader:
+            for batch_dict, hint_batch_dict in self.train_dataloader:
                 batch: DataProto = DataProto.from_single_dict(batch_dict)
                 metrics = {}
                 timing_raw = {}
@@ -408,29 +404,23 @@ class RayPPOTrainer(object):
                 batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object)
 
                 with _timer('step', timing_raw):
-                    # todo
                     with _timer('gen', timing_raw):
-                        if self.hint:  # todo
-                            batch, batch_with_hint = self.actor_rollout_wg.generate_sequences(batch, hint=True)    # generate a direct response & a response with hint!
-                            reward_tensor_with_hint = batch_with_hint.batch['token_level_scores']
-                        else:
-                            batch = self.actor_rollout_wg.generate_sequences(batch)
+                        batch = self.actor_rollout_wg.generate_sequences(batch)
 
                     with _timer('adv', timing_raw):
                         # compute scores using reward model and/or reward function
                         if self.use_rm:  # no reward model used
                             reward_tensor = self.rm_wg.compute_rm_score(batch)
                             batch = batch.union(reward_tensor)
-                        if not self.config.actor_rollout_ref.rollout.compute_reward:   # false
+                        if not self.config.actor_rollout_ref.rollout.compute_reward:  # false
                             reward_tensor = self.reward_fn(batch)
                             batch.batch['token_level_scores'] = reward_tensor
                         else:
                             reward_tensor = batch.batch['token_level_scores']
 
                         # Rejection sampling based on rewards
-                        # Group rewards by uid
                         uids = batch.non_tensor_batch['uid']
-                        unique_uids = np.unique(uids)
+                        unique_uids = np.unique(uids)  # Group rewards by uid
                         valid_mask = torch.ones(len(uids), dtype=torch.bool)
                         valid_mask_with_hint = torch.ones(len(uids), dtype=torch.bool)
                         solve_none = 0
@@ -441,14 +431,9 @@ class RayPPOTrainer(object):
                             uid_rewards = reward_tensor[uid_mask].sum(-1)  # Sum rewards for each sequence
 
                             # Check if all rewards are 0 or all are 1 for this uid
-                            if (uid_rewards == 0).all():   # todo:
+                            if (uid_rewards == 0).all():
                                 valid_mask[uid_mask] = False
-                                solve_none += 1
-
-                                if self.hint:
-                                    uid_rewards_with_hint = reward_tensor_with_hint[uid_mask].sum(-1)
-                                    if not (uid_rewards_with_hint == 1).all():
-                                        valid_mask_with_hint[uid_mask] = False
+                                solve_none += 1  # if self.hint:  #     uid_rewards_with_hint = reward_tensor_with_hint[uid_mask].sum(-1)  #     if not (uid_rewards_with_hint == 1).all():  #         valid_mask_with_hint[uid_mask] = False
 
                             elif (uid_rewards == 1).all():
                                 valid_mask[uid_mask] = False
@@ -461,41 +446,18 @@ class RayPPOTrainer(object):
 
                         if self.config.trainer.rejection_sample:
                             # If no valid samples remain, skip this batch and get a new one
-                            if not valid_mask.any():
-                                continue
-
+                            if not valid_mask.any(): continue
                             # Filter batch to keep only valid samples
                             batch = batch[valid_mask]
                             batch = dataprotoitem_to_dataproto(batch)
                             # Round down to the nearest multiple of world size
                             num_trainer_replicas = self.actor_rollout_wg.world_size
                             max_batch_size = (batch.batch['input_ids'].shape[0] // num_trainer_replicas) * num_trainer_replicas
-                            if not max_batch_size:
-                                # give up, you got everything either all wrong or right.
-                                continue
-
+                            if not max_batch_size: continue  # give up, you got everything either all wrong or right.
                             size_mask = torch.zeros(batch.batch['input_ids'].shape[0], dtype=torch.bool)
                             size_mask[:max_batch_size] = True
                             batch = batch[size_mask]
                             batch = dataprotoitem_to_dataproto(batch)
-
-                        if self.hint and valid_mask_with_hint.any():
-                            # Filter batch to keep only valid samples
-                            batch_with_hint = batch_with_hint[valid_mask_with_hint]
-                            batch_with_hint = dataprotoitem_to_dataproto(batch_with_hint)
-                            # Round down to the nearest multiple of world size
-                            num_trainer_replicas = self.actor_rollout_wg.world_size
-                            max_batch_size = (batch_with_hint.batch['input_ids'].shape[0] // num_trainer_replicas) * num_trainer_replicas
-                            if not max_batch_size:  # todo
-                                # if you got fewer hints than replicas, bail out of this iteration
-                                batch_with_hint = None
-                            else:
-                                size_mask = torch.zeros(batch_with_hint.batch['input_ids'].shape[0], dtype=torch.bool)
-                                size_mask[:max_batch_size] = True
-                                batch_with_hint = batch_with_hint[size_mask]
-                                batch_with_hint = dataprotoitem_to_dataproto(batch_with_hint)
-                        else:
-                            batch_with_hint = None
 
                         # recompute old_log_probs
                         with _timer('old_log_prob', timing_raw):
@@ -516,18 +478,51 @@ class RayPPOTrainer(object):
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n, mask_truncated_samples=self.config.algorithm.mask_truncated_samples)
 
                     # Balance batch size across distributed ranks
-                    self._balance_batch(batch, metrics=metrics)   # todo balance for
-                    if self.hint and batch_with_hint is not None:
-                        self._balance_batch(batch_with_hint, metrics=None)
+                    self._balance_batch(batch, metrics=metrics)
 
                     # compute global_valid tokens
                     batch.meta_info['global_token_num'] = torch.sum(batch.batch['attention_mask'], dim=-1).tolist()
+
+                    hint_batch = None
+                    if self.hint and valid_mask_with_hint.any():
+                        hint_batch = DataProto.from_single_dict(hint_batch_dict)
+                        hint_batch = self.actor_rollout_wg.generate_sequences(hint_batch)  # generate a direct response & a response with hint!
+                        # hint_reward_tensor = hint_batch.batch['token_level_scores']   # todo: rejection sampling?
+
+                        # Filter batch to keep only valid samples
+                        hint_batch = hint_batch[valid_mask_with_hint]
+                        hint_batch = dataprotoitem_to_dataproto(hint_batch)
+                        # Round down to the nearest multiple of world size
+                        num_trainer_replicas = self.actor_rollout_wg.world_size
+                        max_batch_size = (hint_batch.batch['input_ids'].shape[0] // num_trainer_replicas) * num_trainer_replicas
+                        if max_batch_size:
+                            size_mask = torch.zeros(hint_batch.batch['input_ids'].shape[0], dtype=torch.bool)
+                            size_mask[:max_batch_size] = True
+                            hint_batch = hint_batch[size_mask]
+                            hint_batch = dataprotoitem_to_dataproto(hint_batch)
+
+                        # recompute old_log_probs
+                        with _timer('old_log_prob', timing_raw):
+                            old_log_prob = self.actor_rollout_wg.compute_log_prob(hint_batch)
+                            hint_batch = hint_batch.union(old_log_prob)
+                        # Compute reference log probabilities if using reference policy
+                        if self.use_reference_policy:
+                            with _timer('ref', timing_raw):
+                                hint_batch = self.ref_policy_wg.compute_ref_log_prob(hint_batch)
+                                hint_batch = hint_batch.union(ref_log_prob)
+                        hint_batch.batch['token_level_rewards'] = hint_batch.batch['token_level_scores']
+                        # compute advantages, executed on the driver process
+                        hint_batch = compute_advantage(hint_batch, adv_estimator=self.config.algorithm.adv_estimator, gamma=self.config.algorithm.gamma,
+                                                       lam=self.config.algorithm.lam, num_repeat=self.config.actor_rollout_ref.rollout.n,
+                                                       mask_truncated_samples=self.config.algorithm.mask_truncated_samples)
+                        # Balance batch size across distributed ranks
+                        self._balance_batch(hint_batch, metrics=None)
 
                     # implement critic warmup and update actor
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
                         with _timer('update_actor', timing_raw):
-                            actor_output = self.actor_rollout_wg.update_actor(batch, batch_with_hint)
+                            actor_output = self.actor_rollout_wg.update_actor(batch, hint_batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
                         metrics.update(actor_output_metrics)
 
@@ -548,9 +543,7 @@ class RayPPOTrainer(object):
                 logger.log(data=metrics, step=self.global_steps)
 
                 self.global_steps += 1
-
                 if self.global_steps >= self.total_training_steps:
-
                     # perform validation after training
                     if self.val_reward_fn is not None:
                         val_metrics = self._validate()

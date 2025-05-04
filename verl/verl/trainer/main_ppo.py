@@ -3,8 +3,10 @@ Note that we don't combine the main with ray_trainer as ray_trainer is used by o
 """
 
 import torch
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer  # todo
-from verl.trainer.ppo.ray_trainer_sft import RaySFTTrainer
+import ray
+import hydra
+from verl.trainer.ppo.ray_trainer import RayPPOTrainer, ResourcePoolManager, Role  # todo
+# from verl.trainer.ppo.ray_trainer_sft import RaySFTTrainer, ResourcePoolManager, Role
 from verl.utils.reward_score import gsm8k, math
 
 from rllm.rewards.rl_reward import rllm_reward_fn
@@ -80,10 +82,6 @@ class RewardManager():
         return reward_tensor
 
 
-import ray
-import hydra
-
-
 @hydra.main(config_path='config', config_name='ppo_trainer', version_base=None)
 def main(config):
     if not ray.is_initialized():
@@ -127,8 +125,6 @@ def main_task(config):
     else:
         raise NotImplementedError
 
-    from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role
-
     role_worker_mapping = {Role.ActorRollout: ray.remote(ActorRolloutRefWorker), Role.Critic: ray.remote(CriticWorker), Role.RefPolicy: ray.remote(ActorRolloutRefWorker)}
 
     global_pool_id = 'global_pool'
@@ -157,7 +153,7 @@ def main_task(config):
     val_reward_fn = RewardManager(tokenizer=tokenizer, num_examine=1)
 
     resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
-    trainer = RaySFTTrainer(config=config, tokenizer=tokenizer, role_worker_mapping=role_worker_mapping, resource_pool_manager=resource_pool_manager,
+    trainer = RayPPOTrainer(config=config, tokenizer=tokenizer, role_worker_mapping=role_worker_mapping, resource_pool_manager=resource_pool_manager,
                             ray_worker_group_cls=ray_worker_group_cls, reward_fn=reward_fn, val_reward_fn=val_reward_fn)
     trainer.init_workers()
     trainer.fit()
