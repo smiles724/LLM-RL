@@ -254,9 +254,6 @@ class RayPPOTrainer(object):
         reward_tensor_lst = []
         data_source_lst = []
         for test_data in self.val_dataloader:
-            if not isinstance(test_data, dict):   # todo: sanity check
-                print("⚠️ Received non-dict batch from DataLoader:", type(test_data))
-                print(test_data)
             test_batch = DataProto.from_single_dict(test_data)
             # test_batch = test_batch.to('cuda')
 
@@ -509,7 +506,7 @@ class RayPPOTrainer(object):
                             # Compute reference log probabilities if using reference policy
                             if self.use_reference_policy:
                                 with _timer('ref', timing_raw):
-                                    hint_batch = self.ref_policy_wg.compute_ref_log_prob(hint_batch)
+                                    ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(hint_batch)
                                     hint_batch = hint_batch.union(ref_log_prob)
                             hint_batch.batch['token_level_rewards'] = hint_batch.batch['token_level_scores']
                             # compute advantages, executed on the driver process
