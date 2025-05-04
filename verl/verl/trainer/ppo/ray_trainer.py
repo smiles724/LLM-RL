@@ -231,7 +231,7 @@ class RayPPOTrainer(object):
         self.val_dataset = RLHFDataset(parquet_files=self.config.data.val_files, tokenizer=self.tokenizer, prompt_key=self.config.data.prompt_key,
                                        max_prompt_length=self.config.data.max_prompt_length, filter_prompts=True, return_raw_chat=self.config.data.get('return_raw_chat', False),
                                        truncation='error', mode='val')
-        self.val_dataloader = DataLoader(dataset=self.val_dataset, batch_size=len(self.val_dataset), shuffle=True, drop_last=True, collate_fn=collate_fn)
+        self.val_dataloader = DataLoader(dataset=self.val_dataset, batch_size=len(self.val_dataset), drop_last=True, collate_fn=collate_fn)   # todo: drop_last?
         assert len(self.train_dataloader) >= 1 and len(self.val_dataloader) >= 1
         print(f'Size of train dataloader: {len(self.train_dataloader)}')
         print(f'Size of val dataloader: {len(self.val_dataloader)}')
@@ -254,6 +254,9 @@ class RayPPOTrainer(object):
         reward_tensor_lst = []
         data_source_lst = []
         for test_data in self.val_dataloader:
+            if not isinstance(test_data, dict):
+                print("⚠️ Received non-dict batch from DataLoader:", type(test_data))
+                print(test_data)
             test_batch = DataProto.from_single_dict(test_data)
             # test_batch = test_batch.to('cuda')
 
