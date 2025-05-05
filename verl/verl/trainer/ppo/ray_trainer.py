@@ -427,9 +427,7 @@ class RayPPOTrainer(object):
                         solve_all = 0
                         for uid in unique_uids:
                             uid_mask = uids == uid
-                            # print('reward_tensor shape:', reward_tensor.shape)
                             uid_rewards = reward_tensor[uid_mask].sum(-1)  # Sum rewards for each sequence
-
                             # Check if all rewards are 0 or all are 1 for this uid
                             if (uid_rewards == 0).all():
                                 valid_mask[uid_mask] = False
@@ -490,42 +488,63 @@ class RayPPOTrainer(object):
                             reward_tensor = self.rm_wg.compute_rm_score(hint_batch)
                             hint_batch = hint_batch.union(reward_tensor)
                         if not self.config.actor_rollout_ref.rollout.compute_reward:  # not false -> true
-                            hint_batch.batch['token_level_scores'] = self.reward_fn(hint_batch)   # todo: record metrics based on reward: solve_none
-                        # hint_reward_tensor = hint_batch.batch['token_level_scores']   # todo: rejection sampling or not?
+                            hint_batch.batch['token_level_scores'] = self.reward_fn(hint_batch)
+                        reward_tensor = hint_batch.batch['token_level_scores']
+
+                        # Rejection sampling based on rewards
+                        uids = hint_batch.non_tensor_batch['uid']
+                        unique_uids = np.unique(uids)  # Group rewards by uid
+                        hint_solve_none = 0
+                        hint_solve_all = 0
+                        for uid in unique_uids:
+                            uid_mask = uids == uid
+                            uid_rewards = reward_tensor[uid_mask].sum(-1)  # Sum rewards for each sequence
+                            # Check if all rewards are 0 or all are 1 for this uid
+                            if (uid_rewards == 0).all():
+                                valid_mask_with_hint[uid_mask] = False
+                                hint_solve_none += 1
+                            elif (uid_rewards == 1).all():
+                                hint_solve_all += 1
+
+                        # Log to metrics
+                        metrics['batch/hint_solve_none'] = hint_solve_none
+                        metrics['batch/hint_solve_all'] = hint_solve_all
+                        metrics['batch/hint_solve_partial'] = solve_none - hint_solve_none - hint_solve_all
 
                         # Filter batch to keep only valid samples
-                        hint_batch = hint_batch[valid_mask_with_hint]
-                        hint_batch = dataprotoitem_to_dataproto(hint_batch)
-                        # Round down to the nearest multiple of world size
-                        num_trainer_replicas = self.actor_rollout_wg.world_size
-                        max_batch_size = (hint_batch.batch['input_ids'].shape[0] // num_trainer_replicas) * num_trainer_replicas
-                        if max_batch_size:
-                            size_mask = torch.zeros(hint_batch.batch['input_ids'].shape[0], dtype=torch.bool)
-                            size_mask[:max_batch_size] = True
-                            hint_batch = hint_batch[size_mask]
+                        if valid_mask_with_hint.any():
+                            hint_batch = hint_batch[valid_mask_with_hint]
                             hint_batch = dataprotoitem_to_dataproto(hint_batch)
+                            # Round down to the nearest multiple of world size
+                            num_trainer_replicas = self.actor_rollout_wg.world_size
+                            max_batch_size = (hint_batch.batch['input_ids'].shape[0] // num_trainer_replicas) * num_trainer_replicas
+                            if max_batch_size:
+                                size_mask = torch.zeros(hint_batch.batch['input_ids'].shape[0], dtype=torch.bool)
+                                size_mask[:max_batch_size] = True
+                                hint_batch = hint_batch[size_mask]
+                                hint_batch = dataprotoitem_to_dataproto(hint_batch)
 
-                            # recompute old_log_probs
-                            with _timer('old_log_prob', timing_raw):
-                                old_log_prob = self.actor_rollout_wg.compute_log_prob(hint_batch)
-                                hint_batch = hint_batch.union(old_log_prob)
-                            # Compute reference log probabilities if using reference policy
-                            if self.use_reference_policy:
-                                with _timer('ref', timing_raw):
-                                    ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(hint_batch)
-                                    hint_batch = hint_batch.union(ref_log_prob)
+                                # recompute old_log_probs
+                                with _timer('old_log_prob', timing_raw):
+                                    old_log_prob = self.actor_rollout_wg.compute_log_prob(hint_batch)
+                                    hint_batch = hint_batch.union(old_log_prob)
+                                # Compute reference log probabilities if using reference policy
+                                if self.use_reference_policy:
+                                    with _timer('ref', timing_raw):
+                                        ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(hint_batch)
+                                        hint_batch = hint_batch.union(ref_log_prob)
 
-                            hint_batch.batch['token_level_rewards'] = hint_batch.batch['token_level_scores']
-                            # compute advantages, executed on the driver process
-                            hint_batch = compute_advantage(hint_batch, adv_estimator=self.config.algorithm.adv_estimator, gamma=self.config.algorithm.gamma,
-                                                           lam=self.config.algorithm.lam, num_repeat=self.config.actor_rollout_ref.rollout.n,
-                                                           mask_truncated_samples=self.config.algorithm.mask_truncated_samples)
-                            # Balance batch size across distributed ranks
-                            self._balance_batch(hint_batch, metrics=None)
-                            # compute global_valid tokens
-                            hint_batch.meta_info['global_token_num'] = torch.sum(hint_batch.batch['attention_mask'], dim=-1).tolist()
-                        else:
-                            hint_batch = None
+                                hint_batch.batch['token_level_rewards'] = hint_batch.batch['token_level_scores']
+                                # compute advantages, executed on the driver process
+                                hint_batch = compute_advantage(hint_batch, adv_estimator=self.config.algorithm.adv_estimator, gamma=self.config.algorithm.gamma,
+                                                               lam=self.config.algorithm.lam, num_repeat=self.config.actor_rollout_ref.rollout.n,
+                                                               mask_truncated_samples=self.config.algorithm.mask_truncated_samples)
+                                # Balance batch size across distributed ranks
+                                self._balance_batch(hint_batch, metrics=None)
+                                # compute global_valid tokens
+                                hint_batch.meta_info['global_token_num'] = torch.sum(hint_batch.batch['attention_mask'], dim=-1).tolist()
+                            else:
+                                hint_batch = None
 
                     # implement critic warmup and update actor
                     if self.config.trainer.critic_warmup <= self.global_steps:

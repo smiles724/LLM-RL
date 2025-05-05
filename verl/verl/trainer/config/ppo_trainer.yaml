@@ -156,8 +156,8 @@ algorithm:
 
 trainer:
   hint: True
-  rejection_sample: False # Reject sample prompts that all succeed or all fail (0 signal for GRPO due to normalization).
-  rejection_sample_multiplier: 2 # Multiply the training batch size by this factor to account for rejection sampling reduction.
+  rejection_sample: True # Reject prompts that all succeed or all fail (0 signal for GRPO due to normalization).  # todo: true?
+  rejection_sample_multiplier: 1 # Multiply the training batch size due to rejection sampling reduction. (default: 2)
   filter_too_easy: False
   total_epochs: 30
   total_training_steps: null
