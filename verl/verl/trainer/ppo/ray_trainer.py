@@ -484,8 +484,8 @@ class RayPPOTrainer(object):
                     hint_batch = None
                     if self.hint and valid_mask_with_hint.any():
                         hint_batch = DataProto.from_single_dict(hint_batch_dict)
-                        hint_batch.non_tensor_batch['uid'] = uids
-                        hint_batch = self.actor_rollout_wg.generate_sequences(hint_batch)  # generate a direct response & a response with hint!
+                        hint_batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(hint_batch.batch))], dtype=object)
+                        hint_batch = self.actor_rollout_wg.generate_sequences(hint_batch)  # generate a response with hint!
                         if self.use_rm:  # no reward model used
                             reward_tensor = self.rm_wg.compute_rm_score(hint_batch)
                             hint_batch = hint_batch.union(reward_tensor)
