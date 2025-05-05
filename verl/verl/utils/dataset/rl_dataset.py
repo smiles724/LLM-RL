@@ -61,7 +61,7 @@ class RLHFDataset(Dataset):
     """
 
     def __init__(self, parquet_files: Union[str, List[str]], tokenizer: PreTrainedTokenizer, prompt_key='prompt', prompt_with_hint_key='prompt_with_hint', max_prompt_length=1024,
-                 filter_prompts=True, cache_dir='~/.cache/verl/rlhf', chat_template_func=None, return_raw_chat=False, truncation='error', mode='train'):
+                 filter_prompts=True, cache_dir='~/.cache/verl/rlhf', chat_template_func=None, return_raw_chat=False, truncation='error', mode='no_hint'):
         if not isinstance(parquet_files, (List, ListConfig)):
             parquet_files = [parquet_files]
 
@@ -140,7 +140,7 @@ class RLHFDataset(Dataset):
         row_dict["index"] = index
 
         # todo: build the hint chat
-        if self.mode == 'train':
+        if self.mode == 'hint':
             chat_with_hint = row_dict.pop(self.prompt_with_hint_key)
             prompt_with_hint_with_chat_template = self.tokenizer.apply_chat_template(chat_with_hint, add_generation_prompt=True, tokenize=False)
             input_ids, attention_mask = verl_F.tokenize_and_postprocess_data(prompt=prompt_with_hint_with_chat_template, tokenizer=self.tokenizer, max_length=self.max_prompt_length,

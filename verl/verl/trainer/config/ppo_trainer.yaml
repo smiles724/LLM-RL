@@ -165,7 +165,7 @@ trainer:
   experiment_name: gsm8k
   logger: [ 'console', 'wandb' ]
   nnodes: 1
-  n_gpus_per_node: 8
+  n_gpus_per_node: 8   # batch size will be train_batch_size / n_gpus_per_node
   save_freq: -1
   test_freq: -1
   critic_warmup: 0

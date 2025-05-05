@@ -199,7 +199,7 @@ class RayPPOTrainer(object):
         self.config = config
         self.reward_fn = reward_fn
         self.val_reward_fn = val_reward_fn
-        self.hint = getattr(self.config.trainer, 'hint', True)
+        self.hint = getattr(self.config.trainer, 'hint', False)
 
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
         assert self.hybrid_engine, 'Currently, only support hybrid engine'
@@ -221,7 +221,7 @@ class RayPPOTrainer(object):
         from verl.utils.dataset.rl_dataset import RLHFDataset, collate_fn
         self.train_dataset = RLHFDataset(parquet_files=self.config.data.train_files, tokenizer=self.tokenizer, prompt_key=self.config.data.prompt_key,
                                          max_prompt_length=self.config.data.max_prompt_length, filter_prompts=True, return_raw_chat=self.config.data.get('return_raw_chat', False),
-                                         truncation='error')
+                                         truncation='error', mode='hint' if self.hint else 'no_hint')
         train_batch_size = self.config.data.train_batch_size
         if self.config.trainer.rejection_sample:
             train_batch_size *= self.config.trainer.rejection_sample_multiplier
@@ -230,7 +230,7 @@ class RayPPOTrainer(object):
 
         self.val_dataset = RLHFDataset(parquet_files=self.config.data.val_files, tokenizer=self.tokenizer, prompt_key=self.config.data.prompt_key,
                                        max_prompt_length=self.config.data.max_prompt_length, filter_prompts=True, return_raw_chat=self.config.data.get('return_raw_chat', False),
-                                       truncation='error', mode='val')
+                                       truncation='error')
         self.val_dataloader = DataLoader(dataset=self.val_dataset, batch_size=len(self.val_dataset), drop_last=True, collate_fn=collate_fn)   # todo: drop_last?
         assert len(self.train_dataloader) >= 1 and len(self.val_dataloader) >= 1
         print(f'Size of train dataloader: {len(self.train_dataloader)}')
@@ -395,7 +395,9 @@ class RayPPOTrainer(object):
         self.global_steps += 1
         for _ in range(self.config.trainer.total_epochs):
 
-            for batch_dict, hint_batch_dict in self.train_dataloader:
+            for batch_dict in self.train_dataloader:
+                if self.hint:
+                    batch_dict, hint_batch_dict = batch_dict
                 batch: DataProto = DataProto.from_single_dict(batch_dict)
                 metrics = {}
                 timing_raw = {}
