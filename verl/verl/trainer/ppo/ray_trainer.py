@@ -508,6 +508,9 @@ class RayPPOTrainer(object):
                                 with _timer('ref', timing_raw):
                                     ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(hint_batch)
                                     hint_batch = hint_batch.union(ref_log_prob)
+
+                            if not self.config.actor_rollout_ref.rollout.compute_reward:  # not false -> true
+                                hint_batch.batch['token_level_scores'] = self.reward_fn(hint_batch)
                             hint_batch.batch['token_level_rewards'] = hint_batch.batch['token_level_scores']
                             # compute advantages, executed on the driver process
                             hint_batch = compute_advantage(hint_batch, adv_estimator=self.config.algorithm.adv_estimator, gamma=self.config.algorithm.gamma,
