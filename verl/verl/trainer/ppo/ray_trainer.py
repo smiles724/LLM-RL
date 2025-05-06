@@ -445,20 +445,23 @@ class RayPPOTrainer(object):
                         metrics['batch/solve_all'] = solve_all
                         metrics['batch/solve_partial'] = len(unique_uids) - solve_none - solve_all
 
-                        if self.config.trainer.rejection_sample:
+                        if self.config.trainer.rejection_sample:   # be careful to use, as it will throw away samples
                             # If no valid samples remain, skip this batch and get a new one
                             if not valid_mask.any(): continue
                             # Filter batch to keep only valid samples
                             batch = batch[valid_mask]
                             batch = dataprotoitem_to_dataproto(batch)
-                            # Round down to the nearest multiple of world size
-                            num_trainer_replicas = self.actor_rollout_wg.world_size
-                            max_batch_size = (batch.batch['input_ids'].shape[0] // num_trainer_replicas) * num_trainer_replicas
-                            if not max_batch_size: continue  # give up, you got everything either all wrong or right.
-                            size_mask = torch.zeros(batch.batch['input_ids'].shape[0], dtype=torch.bool)
-                            size_mask[:max_batch_size] = True
-                            batch = batch[size_mask]
-                            batch = dataprotoitem_to_dataproto(batch)
+                            if self.config.trainer.rejection_sample_pad:   # todo: how to pad and unpad during loss computation
+                                batch, pad_size = pad_dataproto_to_divisor(batch, self.actor_rollout_wg.world_size)  # pad to be divisible by dp_size
+                            else:
+                                # Round down to the nearest multiple of world size
+                                num_trainer_replicas = self.actor_rollout_wg.world_size
+                                max_batch_size = (batch.batch['input_ids'].shape[0] // num_trainer_replicas) * num_trainer_replicas
+                                if not max_batch_size: continue  # give up, you got everything either all wrong or right.
+                                size_mask = torch.zeros(batch.batch['input_ids'].shape[0], dtype=torch.bool)
+                                size_mask[:max_batch_size] = True
+                                batch = batch[size_mask]
+                                batch = dataprotoitem_to_dataproto(batch)
 
                         # recompute old_log_probs
                         with _timer('old_log_prob', timing_raw):
@@ -485,7 +488,13 @@ class RayPPOTrainer(object):
                     if self.hint and valid_mask_with_hint.any():
                         hint_batch = DataProto.from_single_dict(hint_batch_dict)
                         hint_batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(hint_batch.batch))], dtype=object)
-                        hint_batch = self.actor_rollout_wg.generate_sequences(hint_batch)  # generate a response with hint!
+
+                        hint_batch = hint_batch[valid_mask_with_hint]   # slice over hint_batch
+                        hint_batch = dataprotoitem_to_dataproto(hint_batch)
+                        hint_batch, pad_size = pad_dataproto_to_divisor(hint_batch, self.actor_rollout_wg.world_size)  # pad to be divisible by dp_size
+                        hint_batch_padded = self.actor_rollout_wg.generate_sequences(hint_batch)  # generate a response with hint!
+                        hint_batch = unpad_dataproto(hint_batch_padded, pad_size=pad_size)   # unpad
+
                         if self.use_rm:  # no reward model used
                             reward_tensor = self.rm_wg.compute_rm_score(hint_batch)
                             hint_batch = hint_batch.union(reward_tensor)
@@ -496,6 +505,8 @@ class RayPPOTrainer(object):
                         # Rejection sampling based on rewards
                         uids = hint_batch.non_tensor_batch['uid']
                         unique_uids = np.unique(uids)  # Group rewards by uid
+                        assert len(unique_uids) == solve_none
+                        valid_mask_with_hint = torch.ones(len(uids), dtype=torch.bool)
                         hint_solve_none = 0
                         hint_solve_all = 0
                         for uid in unique_uids:
@@ -511,7 +522,7 @@ class RayPPOTrainer(object):
                         # Log to metrics
                         metrics['batch/hint_solve_none'] = hint_solve_none
                         metrics['batch/hint_solve_all'] = hint_solve_all
-                        metrics['batch/hint_solve_partial'] = solve_none - hint_solve_none - hint_solve_all
+                        metrics['batch/hint_solve_partial'] = len(unique_uids) - hint_solve_none - hint_solve_all
 
                         # Filter batch to keep only valid samples
                         if valid_mask_with_hint.any():
@@ -547,6 +558,8 @@ class RayPPOTrainer(object):
                                 hint_batch.meta_info['global_token_num'] = torch.sum(hint_batch.batch['attention_mask'], dim=-1).tolist()
                             else:
                                 hint_batch = None
+                        else:
+                            hint_batch = None
 
                     # implement critic warmup and update actor
                     if self.config.trainer.critic_warmup <= self.global_steps:

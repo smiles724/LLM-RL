@@ -20,7 +20,7 @@ done
 
 # Set default model path if not provided
 if [ -z "$MODEL_PATH" ]; then
-    MODEL_PATH="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
+    MODEL_PATH="agentica-org/DeepScaleR-1.5B-Preview"    # "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 fi
 
 # Train over a single node, 8 A100-80GB GPUs. we do not use KL (different from the original DeepScaleR)
