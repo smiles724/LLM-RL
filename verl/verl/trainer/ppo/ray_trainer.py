@@ -424,7 +424,7 @@ class RayPPOTrainer(object):
                         uids = batch.non_tensor_batch['uid']   # after generation, uid (B) -> (B * G)
                         unique_uids = np.unique(uids)  # Group rewards by uid
                         valid_mask = torch.ones(len(uids), dtype=torch.bool)
-                        valid_mask_with_hint = torch.zeros(len(hint_batch.batch), dtype=torch.bool)
+                        valid_mask_with_hint = torch.zeros(len(unique_uids), dtype=torch.bool)
                         solve_none = 0
                         solve_all = 0
                         for i, uid in enumerate(unique_uids):
