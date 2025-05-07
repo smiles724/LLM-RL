@@ -383,13 +383,13 @@ class RayPPOTrainer(object):
                           config=OmegaConf.to_container(self.config, resolve=True))
         self.global_steps = 0
 
-        # perform validation before training
-        if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
-            val_metrics = self._validate()
-            pprint(f'Initial validation metrics: {val_metrics}')
-            logger.log(data=val_metrics, step=self.global_steps)
-            if self.config.trainer.get('val_only', False):
-                return
+        # # perform validation before training   # todo: uncomment this!!!
+        # if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
+        #     val_metrics = self._validate()
+        #     pprint(f'Initial validation metrics: {val_metrics}')
+        #     logger.log(data=val_metrics, step=self.global_steps)
+        #     if self.config.trainer.get('val_only', False):
+        #         return
 
         # we start from step 1
         self.global_steps += 1
@@ -421,19 +421,19 @@ class RayPPOTrainer(object):
                             reward_tensor = batch.batch['token_level_scores']
 
                         # Rejection sampling based on rewards
-                        uids = batch.non_tensor_batch['uid']
+                        uids = batch.non_tensor_batch['uid']   # after generation, uid (B) -> (B * G)
                         unique_uids = np.unique(uids)  # Group rewards by uid
                         valid_mask = torch.ones(len(uids), dtype=torch.bool)
-                        valid_mask_with_hint = torch.zeros(len(uids), dtype=torch.bool)
+                        valid_mask_with_hint = torch.zeros(len(hint_batch.batch), dtype=torch.bool)
                         solve_none = 0
                         solve_all = 0
-                        for uid in unique_uids:
+                        for i, uid in enumerate(unique_uids):
                             uid_mask = uids == uid
                             uid_rewards = reward_tensor[uid_mask].sum(-1)  # Sum rewards for each sequence
                             # Check if all rewards are 0 or all are 1 for this uid
                             if (uid_rewards == 0).all():
                                 valid_mask[uid_mask] = False
-                                valid_mask_with_hint[uid_mask] = True
+                                valid_mask_with_hint[i] = True
                                 solve_none += 1
 
                             elif (uid_rewards == 1).all():
@@ -487,12 +487,8 @@ class RayPPOTrainer(object):
                     hint_batch = None
                     if self.hint and valid_mask_with_hint.any():
                         hint_batch = DataProto.from_single_dict(hint_batch_dict)
-                        hint_batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(hint_batch))], dtype=object)
-                        print(hint_batch.non_tensor_batch['uid'].shape)
-                        print(valid_mask_with_hint.shape)
-
+                        hint_batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(hint_batch.batch))], dtype=object)
                         hint_batch = hint_batch[valid_mask_with_hint]   # slice over hint_batch
-                        raise ValueError
                         hint_batch = dataprotoitem_to_dataproto(hint_batch)
                         hint_batch, pad_size = pad_dataproto_to_divisor(hint_batch, self.actor_rollout_wg.world_size)  # pad to be divisible by dp_size
                         hint_batch_padded = self.actor_rollout_wg.generate_sequences(hint_batch)  # generate a response with hint!
