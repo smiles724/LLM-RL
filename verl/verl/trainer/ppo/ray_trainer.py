@@ -381,13 +381,13 @@ class RayPPOTrainer(object):
         logger = Tracking(project_name=self.config.trainer.project_name, experiment_name=self.config.trainer.experiment_name, default_backend=self.config.trainer.logger,
                           config=OmegaConf.to_container(self.config, resolve=True))
         self.global_steps = 0
-        # # perform validation before training   # todo: uncomment this!!!
-        # if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
-        #     val_metrics = self._validate()
-        #     pprint(f'Initial validation metrics: {val_metrics}')
-        #     logger.log(data=val_metrics, step=self.global_steps)
-        #     if self.config.trainer.get('val_only', False):
-        #         return
+        # perform validation before training   # todo: uncomment this!!!
+        if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
+            val_metrics = self._validate()
+            pprint(f'Initial validation metrics: {val_metrics}')
+            logger.log(data=val_metrics, step=self.global_steps)
+            if self.config.trainer.get('val_only', False):
+                return
 
         # we start from step 1
         self.global_steps += 1
