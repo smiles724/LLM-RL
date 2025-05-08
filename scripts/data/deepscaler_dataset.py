@@ -44,7 +44,9 @@ def make_map_fn(split: str):
         answer = example.pop('answer')
         instruction_with_hint = f"The ground truth is {answer}. " + "Let's think step by step and output the final answer within \\boxed{}."
         if instruction is None:
-            instruction = "Let's think step by step and output the final answer within \\boxed{}."
+            instruction = "Let's think step by step and output the final answer within \\boxed{}."   # todo: redudant
+            #  [{'content': "... Find $m + n$. Let's think step by step and output the final answer within \\boxed{}.
+            #  The ground truth is 113. Let's think step by step and output the final answer within \\boxed{}.", 'role': 'user'}]
 
         question = f"{question} {instruction}"
         question_with_hint = f"{question} {instruction_with_hint}"

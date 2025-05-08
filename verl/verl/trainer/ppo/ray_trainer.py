@@ -381,7 +381,7 @@ class RayPPOTrainer(object):
         logger = Tracking(project_name=self.config.trainer.project_name, experiment_name=self.config.trainer.experiment_name, default_backend=self.config.trainer.logger,
                           config=OmegaConf.to_container(self.config, resolve=True))
         self.global_steps = 0
-        # perform validation before training   # todo: uncomment this!!!
+        # perform validation before training
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
             val_metrics = self._validate()
             pprint(f'Initial validation metrics: {val_metrics}')
@@ -486,14 +486,7 @@ class RayPPOTrainer(object):
                     if self.hint and valid_mask_with_hint.any():
                         hint_batch: DataProto = DataProto.from_single_dict(hint_batch_dict)
                         hint_batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(hint_batch.batch))], dtype=object)
-                        hint_batch = hint_batch[valid_mask_with_hint]   # slice over hint_batch
-                        hint_batch = dataprotoitem_to_dataproto(hint_batch)
-                        hint_batch_padded, pad_size = pad_dataproto_to_divisor(hint_batch, self.actor_rollout_wg.world_size)  # pad to be divisible by dp_size
-                        hint_batch_padded = self.actor_rollout_wg.generate_sequences(hint_batch_padded)  # generate a response with hint!
-                        output_gen_batch = unpad_dataproto(hint_batch_padded, pad_size=pad_size)   # unpad
-                        hint_batch = hint_batch.union(output_gen_batch)
-                        hint_batch = dataprotoitem_to_dataproto(hint_batch)
-
+                        hint_batch = self.actor_rollout_wg.generate_sequences(hint_batch)  # generate a response with hint!
                         if self.use_rm:  # no reward model used
                             reward_tensor = self.rm_wg.compute_rm_score(hint_batch)
                             hint_batch = hint_batch.union(reward_tensor)
