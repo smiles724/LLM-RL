@@ -51,7 +51,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.n_val=8 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
-    trainer.hint=False \
+    trainer.hint=True \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
     trainer.project_name='deephint' \
