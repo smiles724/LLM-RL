@@ -326,9 +326,8 @@ class ActorRolloutRefWorker(Worker):
         torch.cuda.empty_cache()
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
-    def update_actor(self, data: DataProto, hint_data=None):
+    def update_actor(self, data: DataProto):
         data = data.to('cuda')
-        if hint_data: hint_data = hint_data.to('cuda')
 
         assert self._is_actor
         if self._is_offload_param:
@@ -337,17 +336,56 @@ class ActorRolloutRefWorker(Worker):
             load_fsdp_optimizer(optimizer=self.actor_optimizer, device_id=torch.cuda.current_device())
 
         data.batch = data.batch.cuda()
-        if hint_data: hint_data.batch = hint_data.batch.cuda()
         log_gpu_memory_usage('Before update policy', logger=logger)
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data=data)
-            if hint_data: self.ulysses_sharding_manager.preprocess_data(data=hint_data)
 
             # perform training
             with Timer(name='update_policy', logger=None) as timer:
                 metrics = self.actor.update_policy(data=data)
-                if hint_data is not None:
-                    _ = self.actor.update_policy(data=hint_data)
+
+            delta_time = timer.last
+            global_num_tokens = data.meta_info['global_token_num']
+            estimated_flops, promised_flops = self.flops_counter.estimate_flops(global_num_tokens, delta_time)
+            metrics['mfu/actor'] = estimated_flops * self.config.actor.ppo_epochs / promised_flops / self.world_size
+
+            self.actor_lr_scheduler.step()
+            lr = self.actor_lr_scheduler.get_last_lr()[0]
+            metrics['actor/lr'] = lr
+            log_gpu_memory_usage('After update policy', logger=logger)
+
+            # TODO: here, we should return all metrics
+            output = DataProto(meta_info={'metrics': metrics})
+            output = self.ulysses_sharding_manager.postprocess_data(data=output)
+            output = output.to('cpu')
+
+        if self._is_offload_param:
+            offload_fsdp_param_and_grad(module=self.actor_module_fsdp, offload_grad=self._is_offload_grad)
+        if self._is_offload_optimizer:
+            offload_fsdp_optimizer(optimizer=self.actor_optimizer)
+        torch.cuda.empty_cache()
+        return output
+
+    @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
+    def update_actor_with_hint(self, data: DataProto, hint_data: DataProto):
+        data = data.to('cuda')
+        hint_data = hint_data.to('cuda')
+        assert self._is_actor
+        if self._is_offload_param:
+            load_fsdp_param_and_grad(module=self.actor_module_fsdp, device_id=torch.cuda.current_device(), load_grad=self._is_offload_grad)
+        if self._is_offload_optimizer:
+            load_fsdp_optimizer(optimizer=self.actor_optimizer, device_id=torch.cuda.current_device())
+
+        data.batch = data.batch.cuda()
+        hint_data.batch = hint_data.batch.cuda()
+        log_gpu_memory_usage('Before update policy', logger=logger)
+        with self.ulysses_sharding_manager:
+            data = self.ulysses_sharding_manager.preprocess_data(data=data)
+            self.ulysses_sharding_manager.preprocess_data(data=hint_data)
+            # perform training
+            with Timer(name='update_policy', logger=None) as timer:
+                metrics = self.actor.update_policy(data=data)
+                self.actor.update_policy(data=hint_data)
 
             delta_time = timer.last
             global_num_tokens = data.meta_info['global_token_num']
