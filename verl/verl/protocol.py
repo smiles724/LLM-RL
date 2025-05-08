@@ -276,8 +276,8 @@ class DataProto:
             if isinstance(val, torch.Tensor):
                 tensors[key] = val
             elif isinstance(val, np.ndarray):
-                print(key, val)  # todo: non_tensors for hint?
-                print('=============================')
+                # print(key, val)  # todo: non_tensors for hint?
+                # print('=============================')  # todo comment
                 non_tensors[key] = val
             else:
                 raise ValueError(f'Unsupported type in data {type(val)}')
