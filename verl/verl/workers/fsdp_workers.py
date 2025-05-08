@@ -326,7 +326,7 @@ class ActorRolloutRefWorker(Worker):
         torch.cuda.empty_cache()
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
-    def update_actor(self, data: DataProto, hint_data: DataProto = None):
+    def update_actor(self, data: DataProto, hint_data=None):
         data = data.to('cuda')
         if hint_data: hint_data = hint_data.to('cuda')
 
