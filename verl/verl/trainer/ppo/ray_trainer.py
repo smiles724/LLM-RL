@@ -556,7 +556,7 @@ class RayPPOTrainer(object):
                         # update actor
                         with _timer('update_actor', timing_raw):
                             if hint_batch is not None:
-                                actor_output = self.actor_rollout_wg.update_actor(batch, hint_batch)
+                                actor_output = self.actor_rollout_wg.update_actor_with_hint(batch, hint_batch)
                             else:
                                 actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
