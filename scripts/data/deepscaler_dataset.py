@@ -48,10 +48,10 @@ def make_map_fn(split: str):
             #  [{'content': "... Find $m + n$. Let's think step by step and output the final answer within \\boxed{}.
             #  The ground truth is 113. Let's think step by step and output the final answer within \\boxed{}.", 'role': 'user'}]
 
-        question = f"{question} {instruction}"
+        question_wo_hint = f"{question} {instruction}"
         question_with_hint = f"{question} {instruction_with_hint}"
 
-        data = {"data_source": "", "prompt": [{"role": "user", "content": question}], "prompt_with_hint": [{"role": "user", "content": question_with_hint}],
+        data = {"data_source": "", "prompt": [{"role": "user", "content": question_wo_hint}], "prompt_with_hint": [{"role": "user", "content": question_with_hint}],
                 "ability": "math", "reward_model": {"style": "rule", "ground_truth": answer},
                 "extra_info": {'split': split, 'index': idx}}
         return data
