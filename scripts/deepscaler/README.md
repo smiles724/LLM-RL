@@ -12,6 +12,8 @@ export VLLM_ATTENTION_BACKEND=XFORMERS
 # Run 8K context length training
 #export MODEL_PATH="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 export MODEL_PATH="agentica-org/DeepScaleR-1.5B-Preview"
+tmux new -s deephint 
+tmux at -t deephint
 ./scripts/deepscaler/train/deepscaler_1.5b_8k.sh --model $MODEL_PATH
 ```
 

@@ -84,6 +84,8 @@ We provide training scripts for both DeepCoder and DeepScaleR models in the `scr
 ```bash
 #export MODEL_PATH="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 export MODEL_PATH="agentica-org/DeepScaleR-1.5B-Preview"
+tmux new -s deephint 
+tmux at -t deephint
 ./scripts/deepscaler/train/deepscaler_1.5b_8k.sh --model $MODEL_PATH
 ```
 
