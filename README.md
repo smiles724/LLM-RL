@@ -86,6 +86,11 @@ We provide training scripts for both DeepCoder and DeepScaleR models in the `scr
 export MODEL_PATH="agentica-org/DeepScaleR-1.5B-Preview"
 tmux new -s deephint 
 tmux at -t deephint
+
+# 32K context length
+./scripts/deepscaler/train/deepscaler_1.5b_32k.sh --model $MODEL_PATH
+
+# 8K context length
 ./scripts/deepscaler/train/deepscaler_1.5b_8k.sh --model $MODEL_PATH
 ```
 

@@ -14,7 +14,15 @@ export VLLM_ATTENTION_BACKEND=XFORMERS
 export MODEL_PATH="agentica-org/DeepScaleR-1.5B-Preview"
 tmux new -s deephint 
 tmux at -t deephint
+
+# 32K context length
+./scripts/deepscaler/train/deepscaler_1.5b_32k.sh --model $MODEL_PATH
+
+
+# run from scratch
 ./scripts/deepscaler/train/deepscaler_1.5b_8k.sh --model $MODEL_PATH
+# run from a saved checkpoinbt
+./scripts/deepscaler/train/deepscaler_1.5b_8k.sh --model  
 ```
 
 ## Multi-Node Training (32 GPUs)
